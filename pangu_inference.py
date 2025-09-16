@@ -9,7 +9,7 @@ from tqdm import tqdm
 import shutil
 
 
-def inference_cpu(weight_path: str, input_data_dir='input_data', output_data_dir='output_data'):
+def inference_cpu(weight_path: str, input_data_dir='input_data', output_data_dir='output_data', is_end=True):
     # The directory of your input and output data
     # input_data_dir = 'input_data'
     # output_data_dir = 'output_data'
@@ -38,13 +38,17 @@ def inference_cpu(weight_path: str, input_data_dir='input_data', output_data_dir
     output, output_surface = ort_session_24.run(None, {'input':input, 'input_surface':input_surface})
 
     # Save the results
-    np.save(os.path.join(output_data_dir, 'output_upper'), output)
-    np.save(os.path.join(output_data_dir, 'output_surface'), output_surface)
+    if is_end:
+        np.save(os.path.join(output_data_dir, 'output_upper'), output)
+        np.save(os.path.join(output_data_dir, 'output_surface'), output_surface)
+    else:
+        np.save(os.path.join(output_data_dir, 'input_upper'), output)
+        np.save(os.path.join(output_data_dir, 'input_surface'), output_surface)
 
     return output, output_surface
 
 
-def inference_gpu(weight_path: str, input_data_dir='input_data', output_data_dir='output_data'):
+def inference_gpu(weight_path: str, input_data_dir='input_data', output_data_dir='output_data', is_end=True):
     # The directory of your input and output data
     # input_data_dir = 'input_data'
     # output_data_dir = 'output_data'
@@ -72,8 +76,12 @@ def inference_gpu(weight_path: str, input_data_dir='input_data', output_data_dir
     # Run the inference session
     output, output_surface = ort_session_24.run(None, {'input':input, 'input_surface':input_surface})
     # Save the results
-    np.save(os.path.join(output_data_dir, 'output_upper'), output)
-    np.save(os.path.join(output_data_dir, 'output_surface'), output_surface)
+    if is_end:
+        np.save(os.path.join(output_data_dir, 'output_upper'), output)
+        np.save(os.path.join(output_data_dir, 'output_surface'), output_surface)
+    else:
+        np.save(os.path.join(output_data_dir, 'input_upper'), output)
+        np.save(os.path.join(output_data_dir, 'input_surface'), output_surface)
 
     return output, output_surface
 
@@ -260,12 +268,14 @@ def npy2nc(output_data_dir='output_data'):
 
 
 
-def inference(forecast_time: int, device: str, weight_dir):
+def inference(forecast_time: int, device: str, weight_dir, save_format):
     '''
     forecast time: 必须是大于等于1的整数
     device: cpu or gpu
     save_dir: 模型权重存放目录
+    save_format: npy or nc
     '''
+    assert save_format in ['npy', 'nc']
     if forecast_time < 1 or not isinstance(forecast_time, int):
         raise ValueError("forecast_time 必须是大于等于1的整数")
     model_steps = [24, 6, 3, 1]
@@ -286,21 +296,27 @@ def inference(forecast_time: int, device: str, weight_dir):
         1: os.path.join(weight_dir, 'pangu_weather_1.onnx'),
     }
 
-    for i, p in tqdm(enumerate(parts)):
+    for i, p in enumerate(tqdm(parts)):
         if i == 0:
             input_data_dir = 'input_data'
         else:
             input_data_dir = 'temp_data'
         if i == len(parts) - 1:
             output_data_dir = 'output_data'
+            is_end = True
         else:
             output_data_dir = 'temp_data'
+            is_end = False
         os.makedirs(output_data_dir, exist_ok=True)
         inference_function(weight_map[p], 
                            input_data_dir=input_data_dir, 
-                           output_data_dir=output_data_dir)
+                           output_data_dir=output_data_dir, 
+                           is_end=is_end)
         
     if os.path.exists('temp_data'):
         shutil.rmtree('temp_data')
+
+    if save_format == 'nc':
+        npy2nc('output_data')
 
     return None
